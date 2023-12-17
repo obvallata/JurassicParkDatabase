@@ -1,0 +1,78 @@
+image: python:3.9-slim
+
+# стейджи пайплайна
+stages:
+  - tasks # у этого стейджа есть стэпы: 'tasks from 3rd to 11th' & 'task 12th'
+
+# внутри пайплайна автоматически поднимается
+# пустая база Postgres (каждый раз на новый степ)
+services:
+  - name: postgres:15-alpine
+    alias: postgres
+
+workflow:
+  rules:
+    - when: always
+
+variables:
+#  переменные окружения для Postgres
+  POSTGRES_DB: postgres
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: password
+  POSTGRES_HOST_AUTH_METHOD: trust
+
+#  переменные окружения для вспомогательного
+#  скрипта utils/pypsql.py и тестов
+  DBNAME: postgres
+  DBHOST: postgres
+  DBPORT: 5432
+  DBUSER: postgres
+  DBPASSWORD: password
+
+#  аккуратное формирование всяких абсолютных
+#  путей к файлам и директориям
+#  у вас будет ${PROJECT_DIR} тождественно равен ${CI_PROJECT_DIR}
+  PROJECT_DIR: ${CI_PROJECT_DIR}/
+  ANALYSIS_DIR: ${PROJECT_DIR}/analysis
+  SCRIPTS_DIR: ${PROJECT_DIR}/scripts
+  TESTS_DIR: ${PROJECT_DIR}/tests
+  UTILS_DIR: ${PROJECT_DIR}/utils
+  PYPSQL: ${UTILS_DIR}/pypsql.py
+
+#  переменные для цвета в консоли (можете
+#  использовать какие-то другие свои)
+  NO_COLOUR: '\033[0m'
+  LIGHT_RED: '\033[1;31m'
+
+
+.setup:
+  before_script:
+    - pip install -r ${PROJECT_DIR}/requirements.txt > /dev/null 2> /dev/null
+
+
+tasks from 3rd to 11th:
+  stage: tasks
+  extends:
+    - .setup
+  script:
+    - echo -e "${LIGHT_RED}>>> Task №3 <<<${NO_COLOUR}"
+    - python3 ${PYPSQL} --file="${SCRIPTS_DIR}/jurparkdata_ddl.sql" --cat
+
+    - echo -e "${LIGHT_RED}>>> Task №4 <<<${NO_COLOUR}"
+    - python3 ${PYPSQL} --file="${SCRIPTS_DIR}/jurparkdata_inserts.sql"
+    - echo "Table 'jurpark.park_section' contains rows:"
+    - python3 ${PYPSQL} --sql="SELECT * FROM jurpark.park_section" --verbose
+    - echo "Table 'jurpark.entertainment' contains rows:"
+    - python3 ${PYPSQL} --sql="SELECT * FROM jurpark.entertainment" --verbose
+    - echo "Table 'jurpark.employee' contains rows:"
+    - python3 ${PYPSQL} --sql="SELECT * FROM jurpark.employee" --verbose
+    - echo -e "${LIGHT_RED}>>> Task №5 <<<${NO_COLOUR}"
+    - python3 ${PYPSQL} --file="${SCRIPTS_DIR}/jurpark_simple_queries.sql"
+    - echo -e "${LIGHT_RED}>>> Task №6-7 <<<${NO_COLOUR}"
+    - SCRIPT_PATH="${SCRIPTS_DIR}/jurpark_coml_queries.sql" pytest ${TESTS_DIR}/test_coml_select.py
+    - echo -e "${LIGHT_RED}>>> Task №9 <<<${NO_COLOUR}"
+    - python3 ${PYPSQL} --file="${SCRIPTS_DIR}/views.sql"
+    - SCRIPT_PATH="${SCRIPTS_DIR}/views_select.sql" pytest ${TESTS_DIR}/test_views.py
+    - echo -e "${LIGHT_RED}>>> Task №10 <<<${NO_COLOUR}"
+    - python3 ${PYPSQL} --file="${SCRIPTS_DIR}/procedures.sql"
+
